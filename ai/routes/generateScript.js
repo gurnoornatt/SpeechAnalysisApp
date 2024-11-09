@@ -28,7 +28,9 @@ router.post('/', async (req, res) => {
         }
 
         // Define the prompt based on type
-        const prompt = `Write a ${type} script about ${topic}. It should be concise and suitable for a speech practice exercise.`;
+        const prompt = `Write a ${type} script about ${topic}. 
+The script should be concise (around 150-200 words) and suitable for a speech practice exercise.
+Format it with clear paragraphs and natural pauses.`;
 
         // Call OpenAI API using chat completions
         const response = await openai.createChatCompletion({
@@ -47,8 +49,19 @@ router.post('/', async (req, res) => {
 
         const script = response.data.choices[0].message.content.trim();
 
+        // Format the response
+        const formattedResponse = {
+            script: script,
+            metadata: {
+                type: type,
+                topic: topic,
+                timestamp: new Date().toISOString(),
+                wordCount: script.split(' ').length
+            }
+        };
+
         // Respond with the generated script
-        res.json({ script });
+        res.json(formattedResponse);
     } catch (error) {
         if (error.response) {
             // The request was made and the server responded with a status code outside 2xx
