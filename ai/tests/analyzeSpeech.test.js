@@ -120,3 +120,100 @@ describe('Speech Analysis Tests', () => {
         expect(result.transcription).toBeTruthy();
     });
 });
+
+describe('Advanced Speech Analysis Tests', () => {
+    // Audio format validation
+    test('handles different audio durations', () => {
+        const words = [
+            { text: 'you', start: 0, end: 1000, confidence: 0.9 },    // 1 second
+            { text: 'know', start: 1000, end: 3000, confidence: 0.95 } // 2 seconds
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.disfluencies[0].end_time).toBe(3.0);
+    });
+
+    // Context-aware detection
+    test('distinguishes between filler "like" and proper usage', () => {
+        const words = [
+            { text: 'I', start: 0, end: 100, confidence: 0.95 },
+            { text: 'like', start: 100, end: 200, confidence: 0.95 }, // Proper usage
+            { text: 'pizza', start: 200, end: 300, confidence: 0.95 },
+            { text: 'like,', start: 400, end: 500, confidence: 0.7 }  // Filler usage
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.disfluencies).toHaveLength(1);
+        expect(result.disfluencies[0].start_time).toBe(0.4);
+    });
+
+    // Multiple disfluencies close together
+    test('handles rapid succession of disfluencies', () => {
+        const words = [
+            { text: 'um,', start: 0, end: 100, confidence: 0.9 },
+            { text: 'like,', start: 100, end: 200, confidence: 0.7 },
+            { text: 'you', start: 200, end: 300, confidence: 0.9 },
+            { text: 'know', start: 300, end: 400, confidence: 0.95 }
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.disfluencies).toHaveLength(3);
+    });
+
+    // Malformed input handling
+    test('handles malformed word objects', () => {
+        const words = [
+            { text: 'um', confidence: 0.9 }, // Missing timestamps
+            { start: 100, end: 200 },        // Missing text
+            { text: 'you' },                 // Missing everything else
+            null,
+            undefined,
+            { text: 'know', start: 300, end: 400, confidence: 0.95 }
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.transcription).toBeTruthy();
+        expect(result.disfluencies).toBeDefined();
+    });
+
+    // Performance testing
+    test('processes long transcripts efficiently', () => {
+        const start = Date.now();
+        const words = Array(10000).fill().map((_, i) => ({
+            text: i % 3 === 0 ? 'um' : 'word',
+            start: i * 100,
+            end: (i + 1) * 100,
+            confidence: 0.9
+        }));
+
+        const result = analyzeSpeech(words);
+        const duration = Date.now() - start;
+
+        expect(duration).toBeLessThan(1000); // Should process in less than 1 second
+        expect(result.disfluencies.length).toBeGreaterThan(0);
+    });
+
+    // Boundary conditions
+    test('handles words at transcript boundaries', () => {
+        const words = [
+            { text: 'you', start: 0, end: 100, confidence: 0.9 },
+            { text: 'know', start: 100, end: 200, confidence: 0.95 }
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.disfluencies[0].start_time).toBe(0);
+    });
+
+    // Special characters and formatting
+    test('handles special characters and formatting', () => {
+        const words = [
+            { text: 'um...', start: 0, end: 100, confidence: 0.9 },
+            { text: 'y\'know', start: 100, end: 200, confidence: 0.95 },
+            { text: 'like!?', start: 200, end: 300, confidence: 0.7 }
+        ];
+
+        const result = analyzeSpeech(words);
+        expect(result.disfluencies.length).toBeGreaterThan(0);
+        expect(result.transcription).toMatch(/[.,'!?]/);
+    });
+});
