@@ -30,24 +30,40 @@ router.post('/', async (req, res) => {
         // Define the prompt based on type
         const prompt = `Write a ${type} script about ${topic}. It should be concise and suitable for a speech practice exercise.`;
 
-        // Call OpenAI API
-        const response = await openai.createCompletion({
-            model: 'text-davinci-004', // GPT-4 model identifier; adjust if necessary
-            prompt: prompt,
-            max_tokens: 500, // Adjust based on desired script length
-            temperature: 0.7, // Controls randomness; adjust as needed
+        // Call OpenAI API using chat completions
+        const response = await openai.createChatCompletion({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                {
+                    role: 'user',
+                    content: prompt
+                }
+            ],
+            max_tokens: 500,
+            temperature: 0.7,
             top_p: 1,
-            n: 1,
-            stop: null,
+            n: 1
         });
 
-        const script = response.data.choices[0].text.trim();
+        const script = response.data.choices[0].message.content.trim();
 
         // Respond with the generated script
         res.json({ script });
     } catch (error) {
-        console.error('Error generating script:', error.message);
-        res.status(500).json({ error: 'An error occurred while generating the script.' });
+        if (error.response) {
+            // The request was made and the server responded with a status code outside 2xx
+            console.error('Error generating script:', error.response.status);
+            console.error(error.response.data);
+            res.status(error.response.status).json({ error: error.response.data.error.message });
+        } else if (error.request) {
+            // The request was made but no response was received
+            console.error('No response received:', error.request);
+            res.status(500).json({ error: 'No response received from OpenAI.' });
+        } else {
+            // Something happened in setting up the request
+            console.error('Error setting up request:', error.message);
+            res.status(500).json({ error: 'An error occurred while setting up the request.' });
+        }
     }
 });
 
