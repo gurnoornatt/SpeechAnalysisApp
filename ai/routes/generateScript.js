@@ -8,6 +8,14 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+// Add at the top of your file
+const ERRORS = {
+    INVALID_INPUT: 'Invalid input parameters',
+    GENERATION_FAILED: 'Failed to generate script',
+    QUALITY_CHECK_FAILED: 'Generated script did not meet quality standards',
+    API_ERROR: 'OpenAI API error',
+};
+
 /**
  * POST /generate-script
  * Body Parameters:
@@ -28,9 +36,13 @@ router.post('/', async (req, res) => {
         }
 
         // Define the prompt based on type
-        const prompt = `Write a ${type} script about ${topic}. 
-The script should be concise (around 150-200 words) and suitable for a speech practice exercise.
-Format it with clear paragraphs and natural pauses.`;
+        const prompt = `Write a ${type} script about ${topic}. Follow these guidelines:
+- Keep it between 150-200 words
+- For ${type === 'casual' ? 'casual tone: use conversational language, contractions, and everyday examples' : 'formal tone: use professional language, proper terminology, and maintain a structured flow'}
+- Include natural pauses and paragraph breaks
+- End with a clear conclusion
+
+The script should be suitable for speech practice.`;
 
         // Call OpenAI API using chat completions
         const response = await openai.createChatCompletion({
@@ -64,18 +76,33 @@ Format it with clear paragraphs and natural pauses.`;
         res.json(formattedResponse);
     } catch (error) {
         if (error.response) {
-            // The request was made and the server responded with a status code outside 2xx
-            console.error('Error generating script:', error.response.status);
+            console.error('OpenAI API Error:', error.response.status);
             console.error(error.response.data);
-            res.status(error.response.status).json({ error: error.response.data.error.message });
+
+            // Handle rate limiting specifically
+            if (error.response.status === 429) {
+                return res.status(429).json({
+                    error: 'Rate limit exceeded. Please try again later.',
+                    retryAfter: error.response.headers['retry-after'] || 60
+                });
+            }
+
+            res.status(error.response.status).json({
+                error: ERRORS.API_ERROR,
+                details: error.response.data.error.message
+            });
         } else if (error.request) {
-            // The request was made but no response was received
-            console.error('No response received:', error.request);
-            res.status(500).json({ error: 'No response received from OpenAI.' });
+            console.error('Network Error:', error.request);
+            res.status(503).json({
+                error: ERRORS.GENERATION_FAILED,
+                details: 'Network error occurred'
+            });
         } else {
-            // Something happened in setting up the request
-            console.error('Error setting up request:', error.message);
-            res.status(500).json({ error: 'An error occurred while setting up the request.' });
+            console.error('Error:', error.message);
+            res.status(500).json({
+                error: ERRORS.GENERATION_FAILED,
+                details: error.message
+            });
         }
     }
 });
