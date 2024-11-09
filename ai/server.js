@@ -9,7 +9,7 @@ dotenv.config();
 
 // Import routes
 const generateScriptRoute = require('./routes/generateScript');
-const analyzeSpeechRoute = require('./routes/analyzeSpeech');
+const { router: analyzeSpeechRouter } = require('./routes/analyzeSpeech');
 
 // Initialize Express app
 const app = express();
@@ -28,7 +28,7 @@ app.use(limiter);
 
 // Routes
 app.use('/generate-script', generateScriptRoute);
-app.use('/analyze-speech', analyzeSpeechRoute);
+app.use('/analyze-speech', analyzeSpeechRouter);
 
 // Root Endpoint
 app.get('/', (req, res) => {
