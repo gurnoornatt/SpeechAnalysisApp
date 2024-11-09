@@ -9,6 +9,7 @@ dotenv.config();
 
 // Import routes
 const generateScriptRoute = require('./routes/generateScript');
+const analyzeSpeechRoute = require('./routes/analyzeSpeech');
 
 // Initialize Express app
 const app = express();
@@ -27,6 +28,7 @@ app.use(limiter);
 
 // Routes
 app.use('/generate-script', generateScriptRoute);
+app.use('/analyze-speech', analyzeSpeechRoute);
 
 // Root Endpoint
 app.get('/', (req, res) => {
@@ -39,7 +41,13 @@ app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
+// Environment variable validation
 if (!process.env.OPENAI_API_KEY) {
     console.error('OPENAI_API_KEY is not set in environment variables');
+    process.exit(1);
+}
+
+if (!process.env.ASSEMBLYAI_API_KEY) {
+    console.error('ASSEMBLYAI_API_KEY is not set in environment variables');
     process.exit(1);
 }
