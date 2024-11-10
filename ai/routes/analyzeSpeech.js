@@ -2,16 +2,103 @@ const express = require('express');
 const router = express.Router();
 const { AssemblyAI } = require('assemblyai');
 
-// Initialize AssemblyAI client with error handling
-let client;
-try {
-    client = new AssemblyAI({
-        apiKey: process.env.ASSEMBLYAI_API_KEY
-    });
-} catch (error) {
-    console.error('Failed to initialize AssemblyAI client:', error);
-    process.exit(1);
-}
+// Declare client at the top level
+let client = null;
+
+// Initialize client function
+const initializeClient = () => {
+    if (!client) {
+        if (!process.env.ASSEMBLYAI_API_KEY) {
+            throw new Error('AssemblyAI API key is missing');
+        }
+        client = new AssemblyAI({
+            apiKey: process.env.ASSEMBLYAI_API_KEY
+        });
+    }
+    return client;
+};
+
+// Initialize client in the route handler
+router.post('/', async (req, res) => {
+    try {
+        // Initialize client
+        client = initializeClient();
+
+        const { audio_url } = req.body;
+
+        if (!audio_url || typeof audio_url !== 'string') {
+            return res.status(400).json({
+                error: "Invalid audio_url",
+                details: "Must provide a valid audio URL string"
+            });
+        }
+
+        console.log('Processing audio URL:', audio_url);
+
+        const transcript = await client.transcripts.create({
+            audio_url: audio_url,
+            language_code: 'en_us'
+        });
+
+        if (!transcript || !transcript.id) {
+            throw new Error('Failed to create transcript');
+        }
+
+        console.log('Transcript created, ID:', transcript.id);
+
+        let transcriptionResult;
+        let attempts = 0;
+        const maxAttempts = 30; // Maximum polling attempts
+
+        while (attempts < maxAttempts) {
+            try {
+                transcriptionResult = await client.transcripts.get(transcript.id);
+
+                if (transcriptionResult.status === 'completed') {
+                    console.log('Transcription completed successfully');
+                    break;
+                } else if (transcriptionResult.status === 'error') {
+                    throw new Error(`Transcription failed: ${transcriptionResult.error}`);
+                }
+
+                attempts++;
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            } catch (error) {
+                console.error('Error polling transcript:', error);
+                throw error;
+            }
+        }
+
+        if (!transcriptionResult || attempts >= maxAttempts) {
+            throw new Error('Transcription timed out');
+        }
+
+        const result = analyzeSpeech(transcriptionResult.words || []);
+        res.json(result);
+
+    } catch (error) {
+        console.error('Route handler error:', error);
+        res.status(500).json({
+            error: 'Failed to process audio',
+            details: error.message
+        });
+    }
+});
+
+// Add this route to verify API key
+router.get('/verify-key', (req, res) => {
+    try {
+        const keyStatus = {
+            keyPresent: !!process.env.ASSEMBLYAI_API_KEY,
+            keyLength: process.env.ASSEMBLYAI_API_KEY?.length,
+            keyPrefix: process.env.ASSEMBLYAI_API_KEY?.slice(0, 5) + '...',
+            timestamp: new Date().toISOString()
+        };
+        res.json(keyStatus);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to verify key' });
+    }
+});
 
 // Define the speech analysis function with error handling
 function analyzeSpeech(words) {
@@ -158,70 +245,6 @@ function analyzeSpeech(words) {
         };
     }
 }
-
-// Express route handler with error handling
-router.post('/', async (req, res) => {
-    try {
-        const { audio_url } = req.body;
-
-        if (!audio_url || typeof audio_url !== 'string') {
-            return res.status(400).json({
-                error: "Invalid audio_url",
-                details: "Must provide a valid audio URL string"
-            });
-        }
-
-        console.log('Processing audio URL:', audio_url);
-
-        const transcript = await client.transcripts.create({
-            audio_url: audio_url,
-            language_code: 'en_us'
-        });
-
-        if (!transcript || !transcript.id) {
-            throw new Error('Failed to create transcript');
-        }
-
-        console.log('Transcript created, ID:', transcript.id);
-
-        let transcriptionResult;
-        let attempts = 0;
-        const maxAttempts = 30; // Maximum polling attempts
-
-        while (attempts < maxAttempts) {
-            try {
-                transcriptionResult = await client.transcripts.get(transcript.id);
-
-                if (transcriptionResult.status === 'completed') {
-                    console.log('Transcription completed successfully');
-                    break;
-                } else if (transcriptionResult.status === 'error') {
-                    throw new Error(`Transcription failed: ${transcriptionResult.error}`);
-                }
-
-                attempts++;
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            } catch (error) {
-                console.error('Error polling transcript:', error);
-                throw error;
-            }
-        }
-
-        if (!transcriptionResult || attempts >= maxAttempts) {
-            throw new Error('Transcription timed out');
-        }
-
-        const result = analyzeSpeech(transcriptionResult.words || []);
-        res.json(result);
-
-    } catch (error) {
-        console.error('Route handler error:', error);
-        res.status(500).json({
-            error: 'Failed to process audio',
-            details: error.message
-        });
-    }
-});
 
 // Export both the router and the analyzeSpeech function
 module.exports = {

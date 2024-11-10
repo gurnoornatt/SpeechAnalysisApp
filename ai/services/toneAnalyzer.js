@@ -53,62 +53,78 @@ async function analyzeTone(text) {
 
 function interpretNLUResults(results) {
     const interpretations = [];
+    const raw_tones = [];
 
-    // Add sentiment interpretation
-    if (results.sentiment) {
-        const sentimentScore = results.sentiment.document.score;
-        interpretations.push({
-            tone: 'Sentiment',
-            score: (sentimentScore + 1) / 2, // Convert from [-1,1] to [0,1]
-            advice: sentimentScore > 0.3
-                ? 'Your tone is positive and engaging.'
-                : sentimentScore < -0.3
-                    ? 'Consider using more positive language.'
-                    : 'Your tone is neutral and balanced.'
-        });
-    }
-
-    // Add emotion interpretations
-    if (results.emotion && results.emotion.document.emotion) {
+    // Process emotions with enhanced logic
+    if (results.emotion?.document?.emotion) {
         const emotions = results.emotion.document.emotion;
         Object.entries(emotions).forEach(([emotion, score]) => {
-            let advice = '';
-            switch (emotion) {
-                case 'joy':
-                    advice = score > 0.5 ? 'Your enthusiasm comes through well.' : 'Consider adding more positive elements.';
-                    break;
-                case 'confidence':
-                    advice = score > 0.5 ? 'You project strong confidence.' : 'Consider using more assertive language.';
-                    break;
-                case 'analytical':
-                    advice = score > 0.5 ? 'Your analytical approach is clear.' : 'Consider adding more logical structure.';
-                    break;
-                default:
-                    advice = `${emotion.charAt(0).toUpperCase() + emotion.slice(1)} level: ${Math.round(score * 100)}%`;
-            }
+            raw_tones.push({ tone: emotion, score });
 
-            interpretations.push({
-                tone: emotion.charAt(0).toUpperCase() + emotion.slice(1),
-                score: score,
-                advice: advice
-            });
+            if (score > 0.5) {
+                const interpretation = {
+                    tone: emotion.charAt(0).toUpperCase() + emotion.slice(1),
+                    score: score,
+                    advice: generateAdvice(emotion, score)
+                };
+                interpretations.push(interpretation);
+            }
         });
     }
 
-    // Add formality assessment based on language features
+    // Add technical tone detection
+    if (results.keywords?.some(k => k.text === 'technical' && k.relevance > 0.7)) {
+        interpretations.push({
+            tone: 'Technical',
+            score: 0.9,
+            advice: 'Technical language detected. Consider your audience\'s expertise level.'
+        });
+    }
+
+    // Enhanced formality detection
     const formalityScore = calculateFormality(results);
     interpretations.push({
         tone: 'Formality',
         score: formalityScore,
-        advice: formalityScore > 0.5
-            ? 'Your tone is formal and professional.'
-            : 'Your tone is casual and conversational.'
+        advice: formalityScore > 0.7
+            ? 'Your tone is highly formal and professional.'
+            : formalityScore > 0.4
+                ? 'Your tone is moderately formal.'
+                : 'Your tone is casual and conversational.'
     });
 
     return {
-        raw_analysis: results,
+        raw_tones,
         interpretation: interpretations
     };
+}
+
+function generateAdvice(emotion, score) {
+    const adviceMap = {
+        joy: {
+            high: 'Your enthusiasm comes through strongly.',
+            medium: 'Your positive tone is appropriate.',
+            low: 'Consider adding more positive elements.'
+        },
+        anger: {
+            high: 'Your tone expresses strong disagreement.',
+            medium: 'Consider tempering emotional language.',
+            low: 'Your tone is measured and controlled.'
+        },
+        analytical: {
+            high: 'Your analytical approach is very clear.',
+            medium: 'Good use of analytical language.',
+            low: 'Consider adding more analytical elements.'
+        },
+        confident: {
+            high: 'Your confidence comes through clearly.',
+            medium: 'Good balance of confidence.',
+            low: 'Consider using more assertive language.'
+        }
+    };
+
+    const level = score > 0.8 ? 'high' : score > 0.5 ? 'medium' : 'low';
+    return adviceMap[emotion]?.[level] || `${emotion} level: ${Math.round(score * 100)}%`;
 }
 
 function calculateFormality(results) {

@@ -1,15 +1,22 @@
-// Import dependencies
+// Move dotenv.config() to the very top, before any other code
+require('dotenv').config();
+
+// Then your imports
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const path = require('path');
 const { router: analyzeSpeechRouter } = require('./routes/analyzeSpeech');
 const analyzeToneRouter = require('./routes/analyzeTone');
 
-// Load environment variables with debug info
-console.log('Current working directory:', process.cwd());
-console.log('Loading environment variables from:', path.resolve(process.cwd(), '.env'));
-dotenv.config();
+// Add detailed debugging at the very top
+console.log('=====================================');
+console.log('Server Startup Diagnostics');
+console.log('=====================================');
+console.log('1. Current Directory:', process.cwd());
+console.log('2. Env File Path:', path.resolve(process.cwd(), '.env'));
+console.log('3. AssemblyAI Key Status:', process.env.ASSEMBLYAI_API_KEY ? 'Present' : 'Missing');
+console.log('4. Key Length:', process.env.ASSEMBLYAI_API_KEY?.length);
+console.log('=====================================');
 
 // Debug environment variables
 console.log('Environment variables loaded:', {
@@ -28,6 +35,17 @@ app.use(express.json());
 // Routes - Fix: Use the router objects correctly
 app.use('/analyze-speech', analyzeSpeechRouter);
 app.use('/analyze-tone', analyzeToneRouter);
+
+// Health Endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        env: {
+            assemblyAI: process.env.ASSEMBLYAI_API_KEY ? 'configured' : 'missing'
+        }
+    });
+});
 
 // Error handling
 app.use((err, req, res, next) => {
