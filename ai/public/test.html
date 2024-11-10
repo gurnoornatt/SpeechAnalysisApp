@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Speech Analysis Tester</title>
+    <style>
+        .disfluency {
+            color: red;
+            font-weight: bold;
+        }
+        .stutter {
+            color: purple;
+            text-decoration: underline wavy;
+        }
+        .filler {
+            color: orange;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .stats {
+            background: #f0f0f0;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Speech Analysis Tester</h1>
+        <button onclick="testStutterDetection()">Test Stutter Detection</button>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function testStutterDetection() {
+            try {
+                const response = await fetch('/analyze-speech/test-stutter', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                displayResults(data);
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            let html = '<h2>Analysis Results</h2>';
+            
+            // Display statistics
+            html += '<div class="stats">';
+            html += `<h3>Statistics</h3>`;
+            html += `<p>Stutter Count: ${data.analysis.statistics.stutterCount}</p>`;
+            html += `<p>Filler Count: ${data.analysis.statistics.fillerCount}</p>`;
+            html += `<p>Fluency Score: ${data.analysis.statistics.fluencyScore}</p>`;
+            html += '</div>';
+
+            // Display transcription with highlighted disfluencies
+            html += '<h3>Transcription with Disfluencies</h3>';
+            html += '<p>';
+            data.visualData.words.forEach(word => {
+                const disfluency = data.visualData.disfluencies.find(
+                    d => d.start_time === word.start/1000
+                );
+                if (disfluency) {
+                    const className = disfluency.type === 'word repetition' || 
+                                    disfluency.type === 'sound block' ? 
+                                    'stutter' : 'filler';
+                    html += `<span class="${className}">${word.text}</span> `;
+                } else {
+                    html += `${word.text} `;
+                }
+            });
+            html += '</p>';
+
+            // Display detailed disfluencies
+            html += '<h3>Detected Disfluencies</h3>';
+            html += '<ul>';
+            data.analysis.disfluencies.forEach(d => {
+                html += `<li>${d.type}: "${d.word}" (${d.severity || 'n/a'} severity)</li>`;
+            });
+            html += '</ul>';
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html> 

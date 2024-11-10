@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ScriptRecorder from './ScriptRecorder';
 
 function ScriptGenerator() {
     const [type, setType] = useState('casual');
@@ -56,12 +57,9 @@ function ScriptGenerator() {
                 {loading ? 'Generating...' : 'Generate'}
             </button>
             {error && <p style={{ color: 'red' }}>{error}</p>}
-            {script && (
-                <div>
-                    <h3>Generated Script:</h3>
-                    <p>{script}</p>
-                </div>
-            )}
+
+            {/* Show ScriptRecorder when script is generated */}
+            {script && <ScriptRecorder script={script} />}
         </div>
     );
 }

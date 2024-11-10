@@ -31,6 +31,7 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.static('public'));
 
 // Routes - Fix: Use the router objects correctly
 app.use('/analyze-speech', analyzeSpeechRouter);

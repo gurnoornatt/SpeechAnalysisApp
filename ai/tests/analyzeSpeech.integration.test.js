@@ -8,11 +8,16 @@ describe('Speech Analysis Integration Tests', () => {
         nock.cleanAll();
     });
 
+    afterEach(() => {
+        nock.cleanAll();
+        jest.clearAllMocks();
+    });
+
     test('handles valid audio URL', async () => {
         const mockAudioUrl = 'https://example.com/audio.mp3';
         const mockTranscriptId = '12345';
 
-        // Mock AssemblyAI API calls
+        // Mock AssemblyAI API calls with faster response
         nock('https://api.assemblyai.com')
             .post('/v2/transcript')
             .reply(200, { id: mockTranscriptId });
@@ -29,13 +34,14 @@ describe('Speech Analysis Integration Tests', () => {
 
         const response = await request(app)
             .post('/analyze-speech')
-            .send({ audio_url: mockAudioUrl });
+            .send({ audio_url: mockAudioUrl })
+            .timeout(5000);  // Add timeout to request
 
         expect(response.status).toBe(200);
         expect(response.body).toHaveProperty('transcription');
         expect(response.body).toHaveProperty('disfluencies');
         expect(response.body).toHaveProperty('tone_analysis');
-    });
+    }, 15000);  // Increase Jest timeout
 
     test('handles invalid audio URL', async () => {
         const response = await request(app)

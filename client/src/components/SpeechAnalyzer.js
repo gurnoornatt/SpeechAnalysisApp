@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-function SpeechAnalyzer() {
-    const [audioUrl, setAudioUrl] = useState('');
+function SpeechAnalyzer({ audioUrl, setAudioUrl }) {
     const [transcription, setTranscription] = useState('');
     const [disfluencies, setDisfluencies] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [toneAnalysis, setToneAnalysis] = useState(null);
+
+    useEffect(() => {
+        if (audioUrl) {
+            analyzeSpeech();
+        }
+    }, [audioUrl]);
 
     const analyzeSpeech = async () => {
         setLoading(true);
@@ -21,16 +27,15 @@ function SpeechAnalyzer() {
             });
 
             const data = await response.json();
-            console.log('Received data:', data);
 
             if (response.ok) {
                 setTranscription(data.transcription);
                 setDisfluencies(data.disfluencies || []);
+                setToneAnalysis(data.tone_analysis);
             } else {
                 setError(data.error || 'An error occurred.');
             }
         } catch (err) {
-            console.error('Error:', err);
             setError('Failed to connect to the server.');
         } finally {
             setLoading(false);
@@ -122,6 +127,53 @@ function SpeechAnalyzer() {
                             </p>
                         )}
                     </div>
+                </div>
+            )}
+
+            {toneAnalysis && (
+                <div style={{
+                    marginTop: '20px',
+                    backgroundColor: '#f8f9fa',
+                    padding: '15px',
+                    borderRadius: '4px'
+                }}>
+                    <h3>Tone Analysis:</h3>
+                    {toneAnalysis.interpretation.map((tone, index) => (
+                        <div key={index} style={{
+                            marginBottom: '10px',
+                            padding: '10px',
+                            backgroundColor: '#fff',
+                            borderRadius: '4px',
+                            borderLeft: tone.tone === 'Formality'
+                                ? `4px solid #${tone.score > 0.5 ? '28a745' : '007bff'}`
+                                : '4px solid #6c757d'
+                        }}>
+                            <strong>{tone.tone}</strong>
+                            {tone.tone === 'Formality' ? (
+                                <div style={{ marginTop: '5px' }}>
+                                    <div style={{
+                                        width: '100%',
+                                        height: '4px',
+                                        backgroundColor: '#e9ecef',
+                                        borderRadius: '2px'
+                                    }}>
+                                        <div style={{
+                                            width: `${tone.score * 100}%`,
+                                            height: '100%',
+                                            backgroundColor: tone.score > 0.5 ? '#28a745' : '#007bff',
+                                            borderRadius: '2px',
+                                            transition: 'width 0.3s ease'
+                                        }} />
+                                    </div>
+                                </div>
+                            ) : (
+                                <span> (Score: {Math.round(tone.score * 100)}%)</span>
+                            )}
+                            <p style={{ margin: '5px 0 0 0', color: '#666' }}>
+                                {tone.advice}
+                            </p>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>

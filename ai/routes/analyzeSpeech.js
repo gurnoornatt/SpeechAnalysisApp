@@ -40,22 +40,27 @@ router.post('/', async (req, res) => {
 
         const client = initializeClient();
         const startTime = Date.now();
-        const TIMEOUT = 30 * 1000; // 30 seconds for testing
+        const TIMEOUT = 15000; // Reduced timeout for testing
         let pollCount = 0;
+        const MAX_POLLS = 15; // Reduced poll count
 
-        // Create transcript
         const transcript = await client.transcripts.create({
             audio_url: req.body.audio_url
+        }).catch(error => {
+            throw new AnalysisError(
+                'Failed to create transcript',
+                'TRANSCRIPTION_ERROR',
+                { original: error.message }
+            );
         });
 
         while (true) {
-            // Check timeout first
-            if (Date.now() - startTime > TIMEOUT || pollCount >= 30) {
-                return res.status(504).json({
-                    error: 'Transcription timed out',
-                    type: 'TIMEOUT_ERROR',
-                    details: { elapsed: Date.now() - startTime }
-                });
+            if (Date.now() - startTime > TIMEOUT || pollCount >= MAX_POLLS) {
+                throw new AnalysisError(
+                    'Transcription timed out',
+                    'TIMEOUT_ERROR',
+                    { elapsed: Date.now() - startTime }
+                );
             }
 
             try {
@@ -72,7 +77,7 @@ router.post('/', async (req, res) => {
                         tone_analysis: toneAnalysis,
                         metadata: {
                             processingTime: Date.now() - startTime,
-                            wordCount: result.words.length || 0
+                            wordCount: result.words.length
                         }
                     });
                 }
@@ -81,7 +86,6 @@ router.post('/', async (req, res) => {
                     throw new AnalysisError('Transcription failed', 'TRANSCRIPTION_ERROR');
                 }
 
-                // Wait before next poll
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
                 throw new AnalysisError(
@@ -170,8 +174,56 @@ function analyzeSpeech(words) {
             return { transcription: '', disfluencies: [] };
         }
 
-        const fillerPhrases = ["you know", "i mean"];
-        const fillerWords = ["um", "uh", "er", "ah", "like"];
+        const fillerPhrases = [
+            "you know", "i mean", "sort of", "kind of", "you see",
+            "basically", "actually", "literally", "like basically"
+        ];
+
+        const fillerWords = [
+            "um", "uh", "er", "ah", "like", "well", "so", "right",
+            "okay", "yeah", "mhm", "hmm"
+        ];
+
+        // New: Stutter patterns
+        const stutterPatterns = {
+            soundRepetition: /^([a-z])\1+/i,  // Detects repeated sounds like "s-s-sorry"
+            wordRepetition: /^(\w+)\s+\1$/i,  // Detects repeated words like "the the"
+            syllableRepetition: /^([a-z]{1,3})-\1/i  // Detects repeated syllables like "ta-ta"
+        };
+
+        // New: Helper function to detect stutters
+        const detectStutter = (current, next, prev) => {
+            if (!current?.text) return null;
+
+            const currentWord = current.text.toLowerCase();
+            const nextWord = next?.text?.toLowerCase();
+            const prevWord = prev?.text?.toLowerCase();
+
+            // Check for word repetition
+            if (currentWord === prevWord) {
+                return {
+                    word: `${currentWord} ${currentWord}`,
+                    start_time: Math.round((prev.start / 1000) * 10) / 10,
+                    end_time: Math.round((current.end / 1000) * 10) / 10,
+                    type: "word repetition",
+                    severity: "moderate"
+                };
+            }
+
+            // Check for sound blocks (when confidence is lower)
+            if (current.confidence < 0.75 && stutterPatterns.soundRepetition.test(currentWord)) {
+                return {
+                    word: currentWord,
+                    start_time: Math.round((current.start / 1000) * 10) / 10,
+                    end_time: Math.round((current.end / 1000) * 10) / 10,
+                    type: "sound block",
+                    severity: "high"
+                };
+            }
+
+            return null;
+        };
+
         let transcription = "";
         const disfluencies = [];
         const n = words.length;
@@ -258,6 +310,17 @@ function analyzeSpeech(words) {
 
                 if (!matched) {
                     const word = words[i];
+                    const nextWord = i < n - 1 ? words[i + 1] : null;
+                    const prevWord = i > 0 ? words[i - 1] : null;
+
+                    // Check for stutters first
+                    const stutterResult = detectStutter(word, nextWord, prevWord);
+                    if (stutterResult) {
+                        disfluencies.push(stutterResult);
+                        i++;
+                        continue;
+                    }
+
                     if (word && word.text) {
                         const currentWordClean = cleanText(word.text.replace(/,$/, '')); // Remove trailing comma
 
@@ -306,6 +369,33 @@ function analyzeSpeech(words) {
         };
     }
 }
+
+// Add this route for testing stutter detection
+router.post('/test-stutter', async (req, res) => {
+    try {
+        const testWords = [
+            { text: 'I', start: 0, end: 100, confidence: 0.9 },
+            { text: 'I', start: 150, end: 250, confidence: 0.9 },
+            { text: 'w-want', start: 400, end: 500, confidence: 0.7 },
+            { text: 'to', start: 800, end: 900, confidence: 0.95 },
+            { text: 'like', start: 1000, end: 1100, confidence: 0.6 },
+            { text: 'um', start: 1200, end: 1300, confidence: 0.9 },
+            { text: 'speak', start: 1500, end: 1600, confidence: 0.95 }
+        ];
+
+        const result = analyzeSpeech(testWords);
+        res.json({
+            analysis: result,
+            visualData: {
+                words: testWords,
+                disfluencies: result.disfluencies,
+                statistics: result.statistics
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Export both the router and the analyzeSpeech function
 module.exports = {
