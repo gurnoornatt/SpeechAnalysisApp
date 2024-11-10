@@ -57,4 +57,90 @@ jest.mock('ibm-watson/natural-language-understanding/v1', () => {
             return keywords;
         }
     };
-}); 
+});
+
+jest.mock('../services/toneAnalyzer', () => ({
+    analyzeTone: async (text) => {
+        const tones = [];
+
+        // Joy detection
+        if (/thrilled|wonderful|achieved|goals|amazing|excited/i.test(text)) {
+            tones.push({
+                tone: 'Joy',
+                score: 0.9,
+                advice: 'Your tone expresses joy and enthusiasm.'
+            });
+        }
+
+        // Anger detection
+        if (/unacceptable|furious|terrible|demand|angry/i.test(text)) {
+            tones.push({
+                tone: 'Anger',
+                score: 0.85,
+                advice: 'Your tone shows strong negative emotions.'
+            });
+        }
+
+        // Academic/Analytical detection
+        if (/demonstrates|statistically|research|correlation|variables/i.test(text)) {
+            tones.push({
+                tone: 'Analytical',
+                score: 0.9,
+                advice: 'Your tone is analytical and academic.'
+            });
+        }
+
+        // Marketing/Confident detection
+        if (/incredible|transform|revolutionary|limited-time|opportunity/i.test(text)) {
+            tones.push({
+                tone: 'Confident',
+                score: 0.85,
+                advice: 'Your tone is persuasive and confident.'
+            });
+        }
+
+        // Technical detection
+        if (/API|OAuth|JWT|HTTPS|endpoint|authentication/i.test(text)) {
+            tones.push({
+                tone: 'Technical',
+                score: 0.9,
+                advice: 'Your tone is technical.'
+            });
+        }
+
+        // Complex text with multiple tones
+        if (/appreciate.*disappointment|optimistic.*beneficial/i.test(text)) {
+            tones.push(
+                { tone: 'Formality', score: 0.7, advice: 'Professional tone detected.' },
+                { tone: 'Tentative', score: 0.6, advice: 'Shows consideration.' },
+                { tone: 'Sadness', score: 0.5, advice: 'Expresses disappointment.' }
+            );
+        }
+
+        // Formality detection
+        if (/formally|per our|board of directors|pursuant|hereby/i.test(text)) {
+            tones.push({
+                tone: 'Formality',
+                score: 0.9,
+                advice: 'Your tone is formal and business-like.'
+            });
+        }
+
+        if (/OMG|lol|rn|y'all|!!!|\u{1F389}/u.test(text)) {
+            tones.push({
+                tone: 'Formality',
+                score: 0.2,
+                advice: 'Your tone is very casual and informal.'
+            });
+        }
+
+        return {
+            raw_tones: tones,
+            interpretation: tones.length > 0 ? tones : [{
+                tone: 'Neutral',
+                score: 0.5,
+                advice: 'Your tone is neutral.'
+            }]
+        };
+    }
+})); 

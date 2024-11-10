@@ -1,4 +1,4 @@
-const { analyzeSpeech } = require('../routes/analyzeSpeech');
+const analyzeSpeech = require('../services/speechAnalyzer').analyzeSpeech;
 
 describe('Speech Analysis Tests', () => {
     // Basic functionality tests

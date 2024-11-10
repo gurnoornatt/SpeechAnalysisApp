@@ -9,13 +9,7 @@ try {
         authenticator: new IamAuthenticator({
             apikey: process.env.IBM_WATSON_API_KEY,
         }),
-        serviceUrl: process.env.IBM_WATSON_URL,
-        features: {
-            sentiment: {},
-            emotion: {},
-            language: {},
-            tone: {}
-        }
+        serviceUrl: process.env.IBM_WATSON_URL
     });
 } catch (error) {
     console.error('Failed to initialize IBM Watson NLU:', error);
@@ -37,9 +31,8 @@ async function analyzeTone(text) {
         const analyzeParams = {
             text: text,
             features: {
-                sentiment: {},
                 emotion: {},
-                language: {}
+                sentiment: {}
             }
         };
 

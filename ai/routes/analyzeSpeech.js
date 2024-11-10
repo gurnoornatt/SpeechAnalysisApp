@@ -1,86 +1,147 @@
 const express = require('express');
 const router = express.Router();
 const { AssemblyAI } = require('assemblyai');
+const { analyzeTone } = require('../services/toneAnalyzer');
 
-// Declare client at the top level
 let client = null;
 
-// Initialize client function
-const initializeClient = () => {
-    if (!client) {
-        if (!process.env.ASSEMBLYAI_API_KEY) {
-            throw new Error('AssemblyAI API key is missing');
-        }
-        client = new AssemblyAI({
-            apiKey: process.env.ASSEMBLYAI_API_KEY
-        });
+// Enhanced error types
+class AnalysisError extends Error {
+    constructor(message, type, details = {}) {
+        super(message);
+        this.type = type;
+        this.details = details;
     }
-    return client;
+}
+
+// Validation function
+const validateAudioUrl = (url) => {
+    if (!url || typeof url !== 'string') {
+        throw new AnalysisError(
+            'Invalid audio URL',
+            'VALIDATION_ERROR',
+            { provided: typeof url }
+        );
+    }
+    try {
+        new URL(url);
+    } catch {
+        throw new AnalysisError(
+            'Malformed URL',
+            'VALIDATION_ERROR',
+            { url }
+        );
+    }
 };
 
-// Initialize client in the route handler
 router.post('/', async (req, res) => {
     try {
-        // Initialize client
-        client = initializeClient();
+        validateAudioUrl(req.body.audio_url);
 
-        const { audio_url } = req.body;
+        const client = initializeClient();
+        const startTime = Date.now();
+        const TIMEOUT = 30 * 1000; // 30 seconds for testing
+        let pollCount = 0;
 
-        if (!audio_url || typeof audio_url !== 'string') {
-            return res.status(400).json({
-                error: "Invalid audio_url",
-                details: "Must provide a valid audio URL string"
-            });
-        }
-
-        console.log('Processing audio URL:', audio_url);
-
+        // Create transcript
         const transcript = await client.transcripts.create({
-            audio_url: audio_url,
-            language_code: 'en_us'
+            audio_url: req.body.audio_url
         });
 
-        if (!transcript || !transcript.id) {
-            throw new Error('Failed to create transcript');
-        }
+        while (true) {
+            // Check timeout first
+            if (Date.now() - startTime > TIMEOUT || pollCount >= 30) {
+                return res.status(504).json({
+                    error: 'Transcription timed out',
+                    type: 'TIMEOUT_ERROR',
+                    details: { elapsed: Date.now() - startTime }
+                });
+            }
 
-        console.log('Transcript created, ID:', transcript.id);
-
-        let transcriptionResult;
-        let attempts = 0;
-        const maxAttempts = 30; // Maximum polling attempts
-
-        while (attempts < maxAttempts) {
             try {
-                transcriptionResult = await client.transcripts.get(transcript.id);
+                const result = await client.transcripts.get(transcript.id);
+                pollCount++;
 
-                if (transcriptionResult.status === 'completed') {
-                    console.log('Transcription completed successfully');
-                    break;
-                } else if (transcriptionResult.status === 'error') {
-                    throw new Error(`Transcription failed: ${transcriptionResult.error}`);
+                if (result.status === 'completed' && result.words) {
+                    const speechAnalysis = analyzeSpeech(result.words);
+                    const toneAnalysis = await analyzeTone(speechAnalysis.transcription);
+
+                    return res.status(200).json({
+                        transcription: speechAnalysis.transcription,
+                        disfluencies: speechAnalysis.disfluencies,
+                        tone_analysis: toneAnalysis,
+                        metadata: {
+                            processingTime: Date.now() - startTime,
+                            wordCount: result.words.length || 0
+                        }
+                    });
                 }
 
-                attempts++;
+                if (result.status === 'error') {
+                    throw new AnalysisError('Transcription failed', 'TRANSCRIPTION_ERROR');
+                }
+
+                // Wait before next poll
                 await new Promise(resolve => setTimeout(resolve, 1000));
             } catch (error) {
-                console.error('Error polling transcript:', error);
-                throw error;
+                throw new AnalysisError(
+                    'Failed to poll transcript status',
+                    'TRANSCRIPTION_ERROR',
+                    { original: error.message }
+                );
             }
         }
-
-        if (!transcriptionResult || attempts >= maxAttempts) {
-            throw new Error('Transcription timed out');
-        }
-
-        const result = analyzeSpeech(transcriptionResult.words || []);
-        res.json(result);
-
     } catch (error) {
-        console.error('Route handler error:', error);
-        res.status(500).json({
-            error: 'Failed to process audio',
-            details: error.message
+        console.error('Analysis error:', error);
+
+        const statusCode = {
+            VALIDATION_ERROR: 400,
+            TRANSCRIPTION_ERROR: 500,
+            TIMEOUT_ERROR: 504
+        }[error.type] || 500;
+
+        return res.status(statusCode).json({
+            error: error.message,
+            type: error.type,
+            details: error.details
+        });
+    }
+});
+
+// Add this test route right after the main route
+router.post('/test', async (req, res) => {
+    try {
+        const { scenario } = req.body;
+
+        switch (scenario) {
+            case 'valid':
+                return res.status(200).json({
+                    transcription: 'Test transcription',
+                    disfluencies: [],
+                    tone_analysis: { tone: 'neutral' },
+                    metadata: {
+                        processingTime: 1000,
+                        wordCount: 2
+                    }
+                });
+
+            case 'timeout':
+                return res.status(504).json({
+                    error: 'Transcription timed out',
+                    type: 'TIMEOUT_ERROR',
+                    details: { elapsed: 30000 }
+                });
+
+            default:
+                return res.status(500).json({
+                    error: 'Unknown scenario',
+                    type: 'TRANSCRIPTION_ERROR'
+                });
+        }
+    } catch (error) {
+        return res.status(500).json({
+            error: error.message,
+            type: 'TRANSCRIPTION_ERROR'
         });
     }
 });
@@ -250,4 +311,13 @@ function analyzeSpeech(words) {
 module.exports = {
     router,
     analyzeSpeech
+};
+
+const initializeClient = () => {
+    if (!process.env.ASSEMBLYAI_API_KEY) {
+        throw new Error('AssemblyAI API key not found');
+    }
+    return new AssemblyAI({
+        apiKey: process.env.ASSEMBLYAI_API_KEY
+    });
 };

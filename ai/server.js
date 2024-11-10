@@ -61,8 +61,5 @@ app.get('/', (req, res) => {
     res.send('Speech Analysis App Backend is Running.');
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+// Export the app
+module.exports = app;
